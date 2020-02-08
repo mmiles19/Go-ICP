@@ -1,0 +1,20 @@
+<launch>
+
+    <node pkg="GoICP" type="point3d_publisher" name="model_pub" 
+        args=" /home/mike/catkin_ws/src/Go-ICP/demo/model_bunny.txt">
+        <remap from="cloud" to="go_icp/model_cloud"/>
+        <remap from="cloud_Frame" to="model_frame"/>
+    </node>
+
+    <node pkg="GoICP" type="point3d_publisher" name="data_pub" 
+        args=" /home/mike/catkin_ws/src/Go-ICP/demo/data_bunny.txt">
+        <remap from="cloud" to="go_icp/data_cloud"/>
+        <remap from="cloud_frame" to="data_frame"/>
+    </node>
+
+    <node pkg="GoICP" type="go_icp_node" name="go_icp">
+        <param name="config_filename" value="/home/mike/catkin_ws/src/Go-ICP/demo/config.txt"/>
+        <param name="nd_downsampled" value="500"/>
+    </node>
+
+</launch>
