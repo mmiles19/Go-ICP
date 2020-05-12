@@ -1,19 +1,19 @@
 <launch>
 
-    <node pkg="GoICP" type="point3d_publisher" name="model_pub" 
-        args=" /home/mike/catkin_ws/src/Go-ICP/demo/model_bunny.txt">
+    <node pkg="goicp" type="point3d_publisher" name="model_pub"  output="screen"
+        args=" /home/mike/catkin_ws/src/goicp/demo/model_bunny.txt model_frame">
         <remap from="cloud" to="go_icp/model_cloud"/>
-        <remap from="cloud_Frame" to="model_frame"/>
+        <!-- <param name="cloud_frame" value="model_frame"/> -->
     </node>
 
-    <node pkg="GoICP" type="point3d_publisher" name="data_pub" 
-        args=" /home/mike/catkin_ws/src/Go-ICP/demo/data_bunny.txt">
+    <node pkg="goicp" type="point3d_publisher" name="data_pub" output="screen" 
+        args=" /home/mike/catkin_ws/src/goicp/demo/data_bunny.txt data_frame">
         <remap from="cloud" to="go_icp/data_cloud"/>
-        <remap from="cloud_frame" to="data_frame"/>
+        <!-- <param name="cloud_frame" value="data_frame"/> -->
     </node>
 
-    <node pkg="GoICP" type="go_icp_node" name="go_icp">
-        <param name="config_filename" value="/home/mike/catkin_ws/src/Go-ICP/demo/config.txt"/>
+    <node pkg="goicp" type="go_icp_node" name="go_icp" output="screen">
+        <param name="config_filename" value="/home/mike/catkin_ws/src/goicp/demo/config.txt"/>
         <param name="nd_downsampled" value="500"/>
     </node>
 

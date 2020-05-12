@@ -1,5 +1,5 @@
 <package>
-  <name>GoICP</name>
+  <name>goicp</name>
   <version>0.0.0</version>
   <description>The Go-ICP ROS package</description>
 

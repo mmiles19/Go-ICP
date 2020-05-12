@@ -38,6 +38,7 @@ using namespace std;
 #include <sensor_msgs/PointCloud2.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
 
 // #define DEFAULT_OUTPUT_FNAME "output.txt"
 #define DEFAULT_CONFIG_FNAME "config.txt"
@@ -60,19 +61,24 @@ int main(int argc, char** argv)
 
 	nh.param<std::string>("config_filename", config_filename_, std::string(DEFAULT_CONFIG_FNAME));
 	nh.param<int>("nd_downsampled", nd_downsampled_, int(0));
+	
+    tf_pub_ = nh.advertise<geometry_msgs::TransformStamped>("transform",1);
 
 	message_filters::Subscriber<sensor_msgs::PointCloud2> model_cloud_sub(nh, "model_cloud", 1);
 	message_filters::Subscriber<sensor_msgs::PointCloud2> data_cloud_sub(nh, "data_cloud", 1);
-	message_filters::TimeSynchronizer<sensor_msgs::PointCloud2, sensor_msgs::PointCloud2> sync(model_cloud_sub, data_cloud_sub, 10);
+	message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2, sensor_msgs::PointCloud2>> sync(message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2, sensor_msgs::PointCloud2>(1), model_cloud_sub, data_cloud_sub);
 	sync.registerCallback(boost::bind(&inputCB, _1, _2));
 
-    tf_pub_ = nh.advertise<geometry_msgs::TransformStamped>("transform",1);
+	ROS_INFO("GoICP initialized.");
 
     ros::spin();
+	return 0;
 }
 
 void inputCB(const sensor_msgs::PointCloud2::ConstPtr& model_cloud_msg, const sensor_msgs::PointCloud2::ConstPtr& data_cloud_msg)
 {
+	ROS_INFO("Got set of clouds.\n");
+
 	int Nm, Nd, NdDownsampled;
 	clock_t  clockBegin, clockEnd;
 	// string modelFName, dataFName, configFName, outputFname;
@@ -82,57 +88,57 @@ void inputCB(const sensor_msgs::PointCloud2::ConstPtr& model_cloud_msg, const se
 	float scModel, scData;
 	Eigen::Vector3f trModel, trData;
 
+	std::vector<POINT3D> model_pts;
 	{
-	std::vector<POINT3D> pts;
-	pcl::PointCloud<pcl::PointXYZ> cloud;
-	pcl::fromROSMsg(*model_cloud_msg, cloud);
+		pcl::PointCloud<pcl::PointXYZ> cloud;
+		pcl::fromROSMsg(*model_cloud_msg, cloud);
 
-	pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
-	feature_extractor.setInputCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr (new pcl::PointCloud<pcl::PointXYZ> ( cloud )) );
-	feature_extractor.compute ();
-	pcl::PointXYZ min_point_AABB;
-	pcl::PointXYZ max_point_AABB;
-	feature_extractor.getAABB (min_point_AABB, max_point_AABB);
-	scModel = sqrt(pow(max_point_AABB.x-min_point_AABB.x,2)+pow(max_point_AABB.y-min_point_AABB.y,2)+pow(max_point_AABB.z-min_point_AABB.z,2))/sqrt(3);
-  	feature_extractor.getMassCenter (trModel);
+		pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
+		feature_extractor.setInputCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr (new pcl::PointCloud<pcl::PointXYZ> ( cloud )) );
+		feature_extractor.compute ();
+		pcl::PointXYZ min_point_AABB;
+		pcl::PointXYZ max_point_AABB;
+		feature_extractor.getAABB (min_point_AABB, max_point_AABB);
+		scModel = sqrt(pow(max_point_AABB.x-min_point_AABB.x,2)+pow(max_point_AABB.y-min_point_AABB.y,2)+pow(max_point_AABB.z-min_point_AABB.z,2))/sqrt(3);
+		feature_extractor.getMassCenter (trModel);
 
-	Nm = cloud.size();
-	for( uint i = 0; i < cloud.size(); i++ )
+		Nm = cloud.size();
+		for( uint i = 0; i < cloud.size(); i++ )
+		{
+			POINT3D pt;
+			pt.x = cloud.points[i].x;
+			pt.y = cloud.points[i].y;
+			pt.z = cloud.points[i].z;
+			model_pts.push_back(pt);
+		}
+		pModel = &model_pts[0];
+	}
+
+	std::vector<POINT3D> data_pts;
 	{
-		POINT3D pt;
-		pt.x = cloud.points[i].x;
-		pt.y = cloud.points[i].y;
-		pt.z = cloud.points[i].z;
-		pts.push_back(pt);
+		pcl::PointCloud<pcl::PointXYZ> cloud;
+		pcl::fromROSMsg(*data_cloud_msg, cloud);
+
+		pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
+		feature_extractor.setInputCloud( pcl::PointCloud<pcl::PointXYZ>::Ptr (new pcl::PointCloud<pcl::PointXYZ> ( cloud )) );
+		feature_extractor.compute ();
+		pcl::PointXYZ min_point_AABB;
+		pcl::PointXYZ max_point_AABB;
+		feature_extractor.getAABB (min_point_AABB, max_point_AABB);
+		scData = sqrt(pow(max_point_AABB.x-min_point_AABB.x,2)+pow(max_point_AABB.y-min_point_AABB.y,2)+pow(max_point_AABB.z-min_point_AABB.z,2))/sqrt(3);
+		feature_extractor.getMassCenter (trData);
+
+		Nd = cloud.size();
+		for( uint i = 0; i < cloud.size(); i++ )
+		{
+			POINT3D pt;
+			pt.x = cloud.points[i].x;
+			pt.y = cloud.points[i].y;
+			pt.z = cloud.points[i].z;
+			data_pts.push_back(pt);
+		}
+		pData = &data_pts[0];
 	}
-	pModel = &pts[0];
-	}
-
-	// {
-	// std::vector<POINT3D> pts;
-	// pcl::PointCloud<pcl::PointXYZ> cloud;
-	// pcl::fromROSMsg(data_cloud_msg, cloud);
-
-	// pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
-	// feature_extractor.setInputCloud (cloud);
-	// feature_extractor.compute ();
-	// pcl::PointXYZ min_point_AABB;
-	// pcl::PointXYZ max_point_AABB;
-	// feature_extractor.getAABB (min_point_AABB, max_point_AABB);
-	// scData = pcl::PointXYZ(max_point_AABB-min_point_AABB).norm()/sqrt(3);
-  	// feature_extractor.getMassCenter (trData);
-
-	// Nd = cloud.size();
-	// for( uint i = 0; i < cloud.size(); i++ )
-	// {
-	// 	POINT3D pt;
-	// 	pt.x = cloud.points[i].x;
-	// 	pt.y = cloud.points[i].y;
-	// 	pt.z = cloud.points[i].z;
-	// 	pts.push_back(pt);
-	// }
-	// pData = &pts[0];
-	// }
 
 	NdDownsampled = nd_downsampled_;
 
@@ -179,12 +185,25 @@ void inputCB(const sensor_msgs::PointCloud2::ConstPtr& model_cloud_msg, const se
 	// ofile << goicp.optT << endl;
 	// ofile.close();
 
+	geometry_msgs::TransformStamped tf_msg;
+	tf_msg.header.frame_id = model_cloud_msg->header.frame_id;
+	tf_msg.child_frame_id = data_cloud_msg->header.frame_id;
+	tf_msg.header.stamp = ros::Time::now();
+	tf_msg.transform.translation.x = goicp.optT.val[0][0];
+	tf_msg.transform.translation.y = goicp.optT.val[1][0];
+	tf_msg.transform.translation.z = goicp.optT.val[2][0];
+	tf_msg.transform.rotation.w = sqrt(1 + goicp.optR.val[0][0] + goicp.optR.val[1][1] + goicp.optR.val[2][2])/2.0;
+	tf_msg.transform.rotation.x = (goicp.optR.val[2][1] - goicp.optR.val[1][2]) / (4*tf_msg.transform.rotation.w);
+	tf_msg.transform.rotation.y = (goicp.optR.val[0][2] - goicp.optR.val[2][0]) / (4*tf_msg.transform.rotation.w);
+	tf_msg.transform.rotation.z = (goicp.optR.val[1][0] - goicp.optR.val[0][1]) / (4*tf_msg.transform.rotation.w);
+	tf_pub_.publish(tf_msg);
+	ros::spinOnce();
 
 
 	delete(pModel);
 	delete(pData);
 
-	// return 0;
+	return;
 }
 
 // void parseInput(int argc, char **argv, string & modelFName, string & dataFName, int & NdDownsampled, string & configFName, string & outputFName)

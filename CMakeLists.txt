@@ -1,4 +1,4 @@
-project(GoICP)
+project(goicp)
 
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
